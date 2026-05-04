@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Cotizador LABZA - Historial Compartido</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background: #1e1e2f;
+            margin: 0;
+            padding: 16px;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            background: #1e1e2f;
+            z-index: 100;
+            padding: 8px 0;
+        }
+        .tab-btn {
+            font-family: 'Times New Roman', Times, serif;
+            background: #2d2d44;
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+            font-size: 12px;
+        }
+        .tab-btn.active {
+            background: #007aff;
+        }
+        .panel {
+            display: none;
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 16px;
+            max-height: 75vh;
+            overflow-y: auto;
+        }
+        .panel.active {
+            display: block;
+        }
+        .design-area {
+            position: relative;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: auto;
+            min-height: 500px;
+            border: 2px dashed #ccc;
+        }
+        .design-container {
+            position: relative;
+            width: 8.5in;
+            height: 11in;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: top center;
+            background-color: white;
+            margin: 0 auto;
+        }
+        .drag-item {
+            position: absolute;
+            background: rgba(0, 122, 255, 0.85);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            min-width: 80px;
+            text-align: center;
+            border: 1px solid white;
+            z-index: 100;
+            touch-action: none;
+            font-family: system-ui;
+        }
+        .drag-item:active {
+            cursor: grabbing;
+        }
+        .controls {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        button {
+            font-family: 'Times New Roman', Times, serif;
+            background: #007aff;
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 40px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            flex: 1;
+        }
+        .btn-success { background: #34c759; }
+        .btn-warning { background: #ff9500; }
+        .btn-danger { background: #ff3b30; }
+        .btn-secondary { background: #6c757d; }
+        input, textarea, select {
+            font-family: 'Times New Roman', Times, serif;
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 12px;
+            font-family: 'Times New Roman', Times, serif;
+        }
+        .fila-concepto {
+            background: #f9f9ff;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 16px;
+            border: 1px solid #e0e0e0;
+        }
+        .btn-eliminar {
+            background: #ff3b30;
+            padding: 8px;
+            margin-top: 8px;
+        }
+        .total-preview {
+            font-weight: bold;
+            text-align: right;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 2px solid #ddd;
+        }
+        h3 {
+            margin-top: 0;
+        }
+        .historial-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 12px;
+            border-left: 4px solid #007aff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .historial-info {
+            flex: 3;
+        }
+        .historial-botones {
+            display: flex;
+            gap: 8px;
+        }
+        .historial-botones button {
+            padding: 6px 12px;
+            font-size: 12px;
+            flex: none;
+        }
+        .badge {
+            background: #007aff;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            display: inline-block;
+            margin-top: 4px;
+        }
+        .btn-pequeno {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .sync-status {
+            font-size: 12px;
+            color: #34c759;
+            margin-left: 10px;
+        }
+        @media (max-width: 640px) {
+            .drag-item { font-size: 10px; padding: 6px 10px; min-width: 70px; }
+            .tab-btn { font-size: 10px; padding: 10px 8px; }
+            .design-container { width: 100%; height: auto; min-height: 400px; }
+            .historial-item { flex-direction: column; align-items: flex-start; }
+            .historial-botones { margin-top: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="tabs">
+    <button class="tab-btn active" data-tab="diseno">🎨 Diseñar</button>
+    <button class="tab-btn" data-tab="datos">📝 Datos</button>
+    <button class="tab-btn" data-tab="conceptos">📊 Conceptos</button>
+    <button class="tab-btn" data-tab="historial">📋 Historial <span id="syncIndicator" class="sync-status">🌐</span></button>
+    <button class="tab-btn" data-tab="pdf">📄 Generar PDF</button>
+</div>
+
+<!-- Panel Diseño -->
+<div id="diseno" class="panel active">
+    <label>📤 Sube tu hoja membretada (PNG o JPG) - Tamaño Carta 8.5x11in</label>
+    <input type="file" id="uploadFondo" accept="image/jpeg,image/png,image/jpg">
+    <div class="design-area">
+        <div id="designContainer" class="design-container" style="background-image: none; width:100%; height:auto; min-height:500px;">
+        </div>
+    </div>
+    <div class="controls">
+        <button id="guardarPosiciones" class="btn-success">💾 Guardar posiciones</button>
+        <button id="resetPosiciones" class="btn-warning">🔄 Resetear</button>
+    </div>
+    <div class="preview-note" style="font-size:12px; color:gray; margin-top:12px;">👉 Toca y arrastra cada cajita a la posición exacta donde debe ir el dato en tu membrete</div>
+</div>
+
+<!-- Panel Datos -->
+<div id="datos" class="panel">
+    <h3>📋 Datos de la cotización</h3>
+    <label>👤 At'n (nombre persona):</label>
+    <input type="text" id="atn" placeholder="Ej: Juan Pablo Godínez Soto">
+    
+    <label>🔖 Referencia:</label>
+    <input type="text" id="referencia" placeholder="Ej: LABZA/032026">
+    
+    <label>📅 Fecha:</label>
+    <input type="date" id="fecha" value="2026-05-03">
+    
+    <label>👨‍💼 Cotizado por:</label>
+    <input type="text" id="cotizadoPor" placeholder="Ej: Humberto Arredondo">
+    
+    <label>🏢 Nombre del cliente:</label>
+    <input type="text" id="cliente" placeholder="Ej: JUAN PABLO GODÍNEZ SOTO">
+    
+    <label>🆔 RFC:</label>
+    <input type="text" id="rfc" placeholder="---">
+    
+    <label>📧 Correo:</label>
+    <input type="email" id="email" placeholder="cliente@email.com">
+    
+    <label>📞 Teléfono:</label>
+    <input type="tel" id="telefono" placeholder="418 101 4976">
+    
+    <div class="controls" style="margin-top:16px;">
+        <button id="guardarManualBtn" class="btn-secondary">💾 Guardar esta cotización</button>
+    </div>
+</div>
+
+<!-- Panel Conceptos -->
+<div id="conceptos" class="panel">
+    <h3>📊 Productos / Servicios</h3>
+    <div id="conceptosLista"></div>
+    <button id="agregarConceptoBtn" style="background:#5856d6;">+ Agregar concepto</button>
+    <div class="total-preview">
+        <div>SUBTOTAL: $<span id="previewSubtotal">0.00</span></div>
+        <div>IVA 16%: $<span id="previewIVA">0.00</span></div>
+        <div>TOTAL: $<span id="previewTotal">0.00</span> MXN</div>
+    </div>
+</div>
+
+<!-- Panel Historial -->
+<div id="historial" class="panel">
+    <h3>📋 Historial de Cotizaciones (Compartido)</h3>
+    <div class="controls" style="margin-bottom:16px;">
+        <button id="borrarTodoHistorialBtn" class="btn-danger">🗑️ Borrar todo</button>
+    </div>
+    <div id="listaHistorial"></div>
+</div>
+
+<!-- Panel PDF -->
+<div id="pdf" class="panel">
+    <h3>📄 Generar Cotización</h3>
+    <button id="generarPDF" class="btn-success">📎 Generar PDF (y guardar)</button>
+    <div id="mensaje" style="margin-top: 16px; padding: 12px; background:#e9ecef; border-radius: 12px; font-size:14px;"></div>
+</div>
+
+<script>
+    // ===================== CONFIGURACIÓN DE FIREBASE =====================
+    // ⚠️ IMPORTANTE: Reemplaza estos datos con los que están en tu consola de Firebase
+    // Ve a: Configuración del proyecto → Tus aplicaciones → Firebase SDK snippet → Configuración
+    const firebaseConfig = {
+        apiKey: "TU_API_KEY_AQUI",
+        authDomain: "cotizalorlabza.firebaseapp.com",
+        projectId: "cotizalorlabza",
+        storageBucket: "cotizalorlabza.firebasestorage.app",
+        messagingSenderId: "TU_MESSAGING_SENDER_ID_AQUI",
+        appId: "TU_APP_ID_AQUI"
+    };
+    
+    // Inicializar Firebase
+    let db;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        // Configurar para la región northamerica-south1
+        db.settings({ host: "northamerica-south1-firestore.googleapis.com", ssl: true });
+        document.getElementById("syncIndicator").innerHTML = "🌐 Sincronizado";
+    } catch(e) {
+        console.error("Error de Firebase:", e);
+        document.getElementById("syncIndicator").innerHTML = "⚠️ Offline";
+    }
+    
+    // ===================== LISTA DE SERVICIOS =====================
+    const servicios = [
+        { 
+            clave: "SUELOS-01", 
+            titulo: "Estudio de mecánica de suelos para determinar capacidad de carga y/o diseño de pavimentos.",
+            cuerpo: "Exploración y muestreo mixto con maquinaria necesaria, por el método de spt (penetración estándar) o por obtención de muestras inalteradas, considerando un máximo de dos penetraciones o dos pca (pozo a cielo abierto) hasta una profundidad máxima de 3m, muestreo alterado (máximo tres estratos). Incluye: registros de penetración estándar/ muestras inalteradas, así como la clasificación visual de las muestras, análisis de las muestras en laboratorio obtenidas, límites de Atterberg, granulometría, clasificación SUCS, reporte técnico del estudio: apoyos técnicos de cada uno de los ensayes, perfil estratigráfico del subsuelo estudiado, recomendaciones para firmes y cimentación, cálculo de capacidad de carga, memoria fotográfica, conclusiones y recomendaciones."
+        },
+        { 
+            clave: "COMPAC-01", 
+            titulo: "Compactación.",
+            cuerpo: "Determinación del grado de compactación (masa volumétrica seca del lugar). Incluye: Determinación del contenido de humedad, análisis y reporte. Considerando un máximo de 5 ensayes (calas). No incluye la determinación de la masa volumétrica seca máxima."
+        },
+        { 
+            clave: "CONC-01", 
+            titulo: "Concreto.",
+            cuerpo: "Visita para muestreo de concreto en obra (NMX-C-161-ONNCCE-2014). Incluye: muestreo de hasta cuatro especímenes cilíndricos o prismáticos (cubos) (NMX-C-159-ONNCCE-2016), obtención de revenimiento (NMX-C-156-ONNCCE-2010), temperatura (NMX-C-435-ONNCCE-2010), traslados (NMX-C-159-ONNCCE-2010) y una permanencia en obra de 1.5 horas máximo. Incluye reportes de laboratorio."
+        },
+        { 
+            clave: "TERR-01", 
+            titulo: "Calidad de materiales para terracerías y/o pavimentos.",
+            cuerpo: "Determinación de la calidad de material para terraplén, subyacente, subrasante, base o subbase. Incluye: Determinación del peso volumétrico seco suelto, análisis granulométrico, límites de Atterberg, equivalente de arena, expansión y valor soporte de california (CBR)."
+        },
+        { 
+            clave: "LIQ-01", 
+            titulo: "Líquidos penetrantes.",
+            cuerpo: "Incluye: traslado hasta una distancia de 10 km o 50 minutos, permanencia en obra o taller hasta 3 horas. Se incluyen hasta 20 spots de 1.0 a 20.0 cm de longitud. No incluye andamiaje."
+        },
+        { 
+            clave: "DENS-01", 
+            titulo: "Masa volumétrica seca máxima.",
+            cuerpo: "Determinación de la masa volumétrica seca máxima y contenido de agua óptima mediante prueba AASHTO estándar o modificada. Incluye: mano de obra, insumos, equipo y herramienta."
+        }
+    ];
+
+    let conceptos = [];
+
+    // Funciones de Firebase
+    async function guardarCotizacionEnCloud(cotizacion) {
+        if(!db) return;
+        try {
+            await db.collection("cotizaciones").doc(cotizacion.id.toString()).set(cotizacion);
+            console.log("Guardado en cloud");
+        } catch(e) {
+            console.error("Error guardando:", e);
+        }
+    }
+    
+    async function eliminarCotizacionDeCloud(id) {
+        if(!db) return;
+        try {
+            await db.collection("cotizaciones").doc(id.toString()).delete();
+            console.log("Eliminado de cloud");
+        } catch(e) {
+            console.error("Error eliminando:", e);
+        }
+    }
+    
+    async function cargarHistorialDeCloud() {
+        if(!db) {
+            renderizarHistorial([]);
+            return;
+        }
+        try {
+            const snapshot = await db.collection("cotizaciones").orderBy("fechaGuardado", "desc").get();
+            const historial = [];
+            snapshot.forEach(doc => {
+                historial.push(doc.data());
+            });
+            renderizarHistorial(historial);
+            return historial;
+        } catch(e) {
+            console.error("Error cargando:", e);
+            renderizarHistorial([]);
+            return [];
+        }
+    }
+    
+    async function borrarTodoHistorialCloud() {
+        if(!db) return;
+        if(!confirm("¿Eliminar TODAS las cotizaciones del historial compartido? Ambas personas perderán el acceso.")) return;
+        try {
+            const snapshot = await db.collection("cotizaciones").get();
+            const batch = db.batch();
+            snapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            alert("Historial borrado completamente");
+            cargarHistorialDeCloud();
+        } catch(e) {
+            console.error("Error borrando todo:", e);
+        }
+    }
+    
+    function renderizarHistorial(historial) {
+        const container = document.getElementById("listaHistorial");
+        if(!container) return;
+        
+        if(!historial || historial.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:gray;">No hay cotizaciones guardadas. Genera una para verla aquí.</p>';
+            return;
+        }
+        
+        container.innerHTML = "";
+        historial.forEach(cot => {
+            const div = document.createElement("div");
+            div.className = "historial-item";
+            div.innerHTML = `
+                <div class="historial-info">
+                    <strong>${cot.cliente || "Sin cliente"}</strong><br>
+                    <small>📅 ${cot.fecha || "Sin fecha"} | 💰 $${cot.total?.toFixed(2) || "0.00"} MXN</small><br>
+                    <span class="badge">${cot.referencia || "Sin referencia"}</span>
+                </div>
+                <div class="historial-botones">
+                    <button class="btn-pequeno" data-ver="${cot.id}">👁️ Ver</button>
+                    <button class="btn-pequeno" data-cargar="${cot.id}">📂 Cargar</button>
+                    <button class="btn-pequeno" data-regenerar="${cot.id}">📄 Regenerar PDF</button>
+                    <button class="btn-pequeno btn-danger" data-eliminar="${cot.id}">🗑️</button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+        
+        container.querySelectorAll("[data-ver]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = parseInt(btn.dataset.ver);
+                const snapshot = await db.collection("cotizaciones").doc(id.toString()).get();
+                if(snapshot.exists) verDetalles(snapshot.data());
+            });
+        });
+        container.querySelectorAll("[data-cargar]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = parseInt(btn.dataset.cargar);
+                const snapshot = await db.collection("cotizaciones").doc(id.toString()).get();
+                if(snapshot.exists) cargarCotizacion(snapshot.data());
+            });
+        });
+        container.querySelectorAll("[data-regenerar]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = parseInt(btn.dataset.regenerar);
+                const snapshot = await db.collection("cotizaciones").doc(id.toString()).get();
+                if(snapshot.exists) {
+                    cargarCotizacion(snapshot.data());
+                    setTimeout(() => generarPDF(true), 500);
+                }
+            });
+        });
+        container.querySelectorAll("[data-eliminar]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = parseInt(btn.dataset.eliminar);
+                if(confirm("¿Eliminar esta cotización del historial compartido?")) {
+                    await eliminarCotizacionDeCloud(id);
+                    cargarHistorialDeCloud();
+                }
+            });
+        });
+    }
+    
+    function verDetalles(cotizacion) {
+        if(!cotizacion) return;
+        let detalles = `
+            📄 COTIZACIÓN\n
+            Cliente: ${cotizacion.cliente}\n
+            At'n: ${cotizacion.atn}\n
+            Referencia: ${cotizacion.referencia}\n
+            Fecha: ${cotizacion.fecha}\n
+            Cotizado por: ${cotizacion.cotizadoPor}\n
+            RFC: ${cotizacion.rfc}\n
+            Correo: ${cotizacion.email}\n
+            Teléfono: ${cotizacion.telefono}\n
+            ─────────────────────────────\n
+            PRODUCTOS/SERVICIOS:\n`;
+        
+        (cotizacion.conceptos || []).forEach((c, i) => {
+            const precio = c.precio || 0;
+            const cantidad = c.cantidad || 0;
+            const descuento = c.descuento || 0;
+            const subtotal = (precio * cantidad) * (1 - descuento / 100);
+            detalles += `${i+1}. ${c.clave} - ${c.descripcion?.substring(0, 80)}...\n   Cant: ${cantidad} x $${precio} = $${subtotal.toFixed(2)}\n`;
+        });
+        
+        detalles += `\n─────────────────────────────\n`;
+        detalles += `SUBTOTAL: $${cotizacion.subtotal?.toFixed(2) || "0.00"}\n`;
+        detalles += `IVA 16%: $${cotizacion.iva?.toFixed(2) || "0.00"}\n`;
+        detalles += `TOTAL: $${cotizacion.total?.toFixed(2) || "0.00"} MXN\n`;
+        detalles += `\nGuardada el: ${cotizacion.fechaGuardado}`;
+        
+        alert(detalles);
+    }
+    
+    function cargarCotizacion(cotizacion) {
+        if(!cotizacion) return;
+        document.getElementById("atn").value = cotizacion.atn || "";
+        document.getElementById("referencia").value = cotizacion.referencia || "";
+        document.getElementById("fecha").value = cotizacion.fecha || "";
+        document.getElementById("cotizadoPor").value = cotizacion.cotizadoPor || "";
+        document.getElementById("cliente").value = cotizacion.cliente || "";
+        document.getElementById("rfc").value = cotizacion.rfc || "";
+        document.getElementById("email").value = cotizacion.email || "";
+        document.getElementById("telefono").value = cotizacion.telefono || "";
+        
+        conceptos = JSON.parse(JSON.stringify(cotizacion.conceptos || []));
+        renderConceptos();
+        actualizarTotales();
+        
+        alert("Cotización cargada. Ve a la pestaña Conceptos para ver/editarlos.");
+    }
+    
+    async function guardarCotizacionActualCloud(esAutomatico = true) {
+        const datosActuales = {
+            id: Date.now(),
+            fechaGuardado: new Date().toISOString(),
+            atn: document.getElementById("atn").value,
+            referencia: document.getElementById("referencia").value,
+            fecha: document.getElementById("fecha").value,
+            cotizadoPor: document.getElementById("cotizadoPor").value,
+            cliente: document.getElementById("cliente").value,
+            rfc: document.getElementById("rfc").value,
+            email: document.getElementById("email").value,
+            telefono: document.getElementById("telefono").value,
+            conceptos: JSON.parse(JSON.stringify(conceptos)),
+            total: parseFloat(document.getElementById("previewTotal").innerText),
+            subtotal: parseFloat(document.getElementById("previewSubtotal").innerText),
+            iva: parseFloat(document.getElementById("previewIVA").innerText)
+        };
+        
+        await guardarCotizacionEnCloud(datosActuales);
+        
+        if(esAutomatico) {
+            const msg = document.getElementById("mensaje");
+            if(msg) msg.innerHTML = "✅ Cotización guardada en la nube (historial compartido).";
+        } else {
+            alert("✅ Cotización guardada en la nube");
+        }
+        cargarHistorialDeCloud();
+    }
+
+    // ===================== RESTO DE FUNCIONES =====================
+    function setupTabs() {
+        const tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabId = this.getAttribute('data-tab');
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                document.querySelectorAll('.panel').forEach(panel => {
+                    panel.classList.remove('active');
+                });
+                document.getElementById(tabId).classList.add('active');
+                if(tabId === 'historial') cargarHistorialDeCloud();
+            });
+        });
+    }
+
+    document.getElementById("uploadFondo").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if(file) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const imgUrl = ev.target.result;
+                const container = document.getElementById("designContainer");
+                container.style.backgroundImage = `url(${imgUrl})`;
+                container.style.backgroundSize = "contain";
+                container.style.backgroundRepeat = "no-repeat";
+                container.style.backgroundPosition = "top center";
+                localStorage.setItem("fondo_membrete_final", imgUrl);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    const fondoGuardado = localStorage.getItem("fondo_membrete_final");
+    if(fondoGuardado) {
+        const container = document.getElementById("designContainer");
+        container.style.backgroundImage = `url(${fondoGuardado})`;
+        container.style.backgroundSize = "contain";
+        container.style.backgroundRepeat = "no-repeat";
+        container.style.backgroundPosition = "top center";
+    }
+
+    function renderConceptos() {
+        const container = document.getElementById("conceptosLista");
+        container.innerHTML = '';
+        
+        conceptos.forEach((c, idx) => {
+            const div = document.createElement("div");
+            div.className = "fila-concepto";
+            div.innerHTML = `
+                <select id="servicio_${idx}" data-idx="${idx}">
+                    <option value="">-- Seleccionar servicio --</option>
+                    ${servicios.map(s => `<option value="${s.clave}">${s.clave} - ${s.titulo.substring(0, 50)}</option>`).join('')}
+                </select>
+                <input type="text" placeholder="Clave" id="clave_${idx}" value="${c.clave || ''}">
+                <textarea rows="3" placeholder="Descripción" id="desc_${idx}">${c.descripcion || ''}</textarea>
+                <input type="number" step="0.01" placeholder="Precio $" id="precio_${idx}" value="${c.precio || 0}">
+                <input type="number" step="0.01" placeholder="Descuento %" id="descuento_${idx}" value="${c.descuento || 0}">
+                <input type="number" step="0.01" placeholder="Cantidad" id="cant_${idx}" value="${c.cantidad || 1}">
+                <button class="btn-eliminar" data-idx="${idx}">Eliminar</button>
+            `;
+            container.appendChild(div);
+            
+            const select = div.querySelector(`#servicio_${idx}`);
+            if(c.clave) {
+                for(let i=0; i<select.options.length; i++) {
+                    if(select.options[i].value === c.clave) {
+                        select.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            
+            select.addEventListener('change', (e) => {
+                const selected = servicios.find(s => s.clave === e.target.value);
+                if(selected) {
+                    document.getElementById(`clave_${idx}`).value = selected.clave;
+                    document.getElementById(`desc_${idx}`).value = selected.titulo + " " + selected.cuerpo;
+                    conceptos[idx].clave = selected.clave;
+                    conceptos[idx].descripcion = selected.titulo + " " + selected.cuerpo;
+                    conceptos[idx].titulo = selected.titulo;
+                    conceptos[idx].cuerpo = selected.cuerpo;
+                    actualizarTotales();
+                }
+            });
+            
+            const inputs = div.querySelectorAll('input, textarea');
+            inputs.forEach(inp => {
+                inp.addEventListener('input', (e) => {
+                    const id = e.target.id;
+                    if(id.includes('clave')) conceptos[idx].clave = e.target.value;
+                    if(id.includes('desc') && !id.includes('descuento')) conceptos[idx].descripcion = e.target.value;
+                    if(id.includes('precio')) conceptos[idx].precio = parseFloat(e.target.value) || 0;
+                    if(id.includes('descuento')) conceptos[idx].descuento = parseFloat(e.target.value) || 0;
+                    if(id.includes('cant')) conceptos[idx].cantidad = parseFloat(e.target.value) || 0;
+                    actualizarTotales();
+                });
+            });
+        });
+        
+        document.querySelectorAll('.btn-eliminar').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(btn.dataset.idx);
+                conceptos.splice(idx, 1);
+                renderConceptos();
+            });
+        });
+        actualizarTotales();
+    }
+    
+    function actualizarTotales() {
+        let subtotal = 0;
+        conceptos.forEach(c => {
+            const precio = c.precio || 0;
+            const cantidad = c.cantidad || 0;
+            const descuento = c.descuento || 0;
+            subtotal += (precio * cantidad) * (1 - descuento / 100);
+        });
+        const iva = subtotal * 0.16;
+        const total = subtotal + iva;
+        document.getElementById('previewSubtotal').innerText = subtotal.toFixed(2);
+        document.getElementById('previewIVA').innerText = iva.toFixed(2);
+        document.getElementById('previewTotal').innerText = total.toFixed(2);
+    }
+    
+    document.getElementById("agregarConceptoBtn").addEventListener("click", () => {
+        conceptos.push({ clave: "", descripcion: "", precio: 0, descuento: 0, cantidad: 1 });
+        renderConceptos();
+    });
+    
+    document.getElementById("guardarManualBtn").addEventListener("click", () => {
+        guardarCotizacionActualCloud(false);
+    });
+    
+    document.getElementById("borrarTodoHistorialBtn").addEventListener("click", borrarTodoHistorialCloud);
+    
+    function dividirTextoEnLineas(texto, anchoPulgadas) {
+        if (!texto) return [];
+        const caracteresPorLinea = Math.floor(anchoPulgadas / 0.09);
+        let lineas = [];
+        let palabras = texto.split(' ');
+        let lineaActual = "";
+        for(let i=0; i<palabras.length; i++) {
+            let palabra = palabras[i];
+            let pruebaLinea = lineaActual ? lineaActual + " " + palabra : palabra;
+            if(pruebaLinea.length <= caracteresPorLinea) {
+                lineaActual = pruebaLinea;
+            } else {
+                if(lineaActual) lineas.push(lineaActual);
+                lineaActual = palabra;
+            }
+        }
+        if(lineaActual) lineas.push(lineaActual);
+        return lineas;
+    }
+    
+    async function generarPDF(sinGuardar = false) {
+        const msg = document.getElementById("mensaje");
+        msg.innerText = "Generando PDF...";
+        
+        const fondo = localStorage.getItem("fondo_membrete_final");
+        const colWidths = [0.95, 2.11, 0.98, 0.70, 0.69, 1.15, 0.92];
+        const LIMITE_Y_MAXIMO = 9.90;
+        const alturaPorLinea = 0.18;
+        const Y_INICIO_TABLA = 4.1;
+        
+        const datosCliente = {
+            atn: document.getElementById("atn").value,
+            referencia: document.getElementById("referencia").value,
+            fecha: document.getElementById("fecha").value,
+            cotizadoPor: document.getElementById("cotizadoPor").value,
+            cliente: document.getElementById("cliente").value,
+            rfc: document.getElementById("rfc").value,
+            email: document.getElementById("email").value,
+            telefono: document.getElementById("telefono").value
+        };
+        
+        const subtotalTotal = parseFloat(document.getElementById('previewSubtotal').innerText);
+        const ivaTotal = parseFloat(document.getElementById('previewIVA').innerText);
+        const totalTotal = parseFloat(document.getElementById('previewTotal').innerText);
+        
+        let paginas = [];
+        
+        function crearPagina() {
+            const page = document.createElement("div");
+            page.style.width = "8.5in";
+            page.style.minHeight = "11in";
+            page.style.backgroundColor = "white";
+            page.style.fontFamily = "'Times New Roman', Times, serif";
+            page.style.position = "relative";
+            if(fondo) {
+                page.style.backgroundImage = `url(${fondo})`;
+                page.style.backgroundSize = "contain";
+                page.style.backgroundRepeat = "no-repeat";
+                page.style.backgroundPosition = "top center";
+            }
+            return page;
+        }
+        
+        function addText(page, text, leftIn, topIn, fontSizePt, isBold, align) {
+            const div = document.createElement("div");
+            div.style.position = "absolute";
+            div.style.left = `${leftIn * 96}px`;
+            div.style.top = `${topIn * 96}px`;
+            div.style.fontSize = `${fontSizePt}pt`;
+            div.style.fontFamily = "'Times New Roman', Times, serif";
+            div.style.fontWeight = isBold ? "bold" : "normal";
+            div.style.textAlign = align || "left";
+            div.innerText = text;
+            page.appendChild(div);
+        }
+        
+        function dibujarTextosFijos(page, datos) {
+            addText(page, "Laboratorio LABZA", 6.07, 0.32, 9, false, "left");
+            addText(page, "Frijol No. 220, Col. La Espiga 37905", 6.07, 0.56, 9, false, "left");
+            addText(page, "San Luis de la Paz, Guanajuato, México", 6.07, 0.80, 9, false, "left");
+            addText(page, "ZAGO020502174", 6.07, 1.04, 9, false, "left");
+            addText(page, "DATOS DEL CLIENTE", 4.97, 2.35, 10, true, "left");
+            addText(page, "COTIZACIÓN", 3.43, 1.68, 14, true, "left");
+            addText(page, "At'n:", 0.85, 1.97, 14, false, "left");
+            addText(page, datos.atn, 2.1, 1.97, 14, false, "left");
+            addText(page, "Laboratoriolabza@outlook.com", 0.33, 10.35, 8, false, "left");
+            addText(page, "Tel.: 442 342 3184", 0.33, 10.49, 8, false, "left");
+            addText(page, "*** Estos precios están sujetos a cambios sin previo aviso ***", 0.33, 10.63, 8, false, "left");
+        }
+        
+        function dibujarEncabezadosTabla(page, datos) {
+            addText(page, "Referencia:", 0.85, 2.62, 10, true, "left");
+            addText(page, datos.referencia, 2.2, 2.62, 10, false, "left");
+            addText(page, "Fecha:", 0.85, 2.88, 10, true, "left");
+            addText(page, datos.fecha, 1.9, 2.88, 10, false, "left");
+            addText(page, "Cotizado por:", 0.85, 3.13, 10, true, "left");
+            addText(page, datos.cotizadoPor, 2.2, 3.13, 10, false, "left");
+            addText(page, "Nombre:", 4.97, 2.62, 10, true, "left");
+            addText(page, datos.cliente, 5.9, 2.62, 10, false, "left");
+            addText(page, "RFC:", 4.97, 2.88, 10, true, "left");
+            addText(page, datos.rfc, 5.6, 2.88, 10, false, "left");
+            addText(page, "Correo:", 4.97, 3.13, 10, true, "left");
+            addText(page, datos.email, 5.9, 3.13, 10, false, "left");
+            addText(page, "Tel.:", 4.97, 3.38, 10, true, "left");
+            addText(page, datos.telefono, 5.8, 3.38, 10, false, "left");
+            
+            const headers = ["CLAVE", "DESCRIPCIÓN", "PRECIO", "DESC.", "CANT.", "SUBTOTAL", "IMP."];
+            let currentX = 0.85;
+            for(let i=0; i<headers.length; i++) {
+                addText(page, headers[i], currentX, 3.85 + 0.118, 10, true, "left");
+                currentX += colWidths[i];
+            }
+        }
+        
+        function dibujarTotalesPage(page) {
+            addText(page, "SUBTOTAL", 5.5, 8.88, 10, true, "right");
+            addText(page, "IVA 16.00%", 5.5, 9.12, 10, true, "right");
+            addText(page, "TOTAL", 5.5, 9.35, 10, true, "right");
+            addText(page, `$ ${subtotalTotal.toFixed(2)}`, 6.5, 8.88, 10, true, "left");
+            addText(page, `$ ${ivaTotal.toFixed(2)}`, 6.5, 9.12, 10, true, "left");
+            addText(page, `$ ${totalTotal.toFixed(2)} MXN`, 6.5, 9.35, 10, true, "left");
+        }
+        
+        let paginaActual = crearPagina();
+        let currentY = Y_INICIO_TABLA;
+        dibujarTextosFijos(paginaActual, datosCliente);
+        dibujarEncabezadosTabla(paginaActual, datosCliente);
+        paginas.push(paginaActual);
+        
+        for(let idx=0; idx<conceptos.length; idx++) {
+            const c = conceptos[idx];
+            const precio = c.precio || 0;
+            const cantidad = c.cantidad || 0;
+            const descuento = c.descuento || 0;
+            const subtotalFila = (precio * cantidad) * (1 - descuento / 100);
+            const imp = subtotalFila * 0.16;
+            
+            let lineasDescripcion = [];
+            
+            if(c.titulo && c.cuerpo) {
+                const lineasTitulo = dividirTextoEnLineas(c.titulo, colWidths[1]);
+                const lineasCuerpo = dividirTextoEnLineas(c.cuerpo, colWidths[1]);
+                for(let i=0; i<lineasTitulo.length; i++) {
+                    lineasDescripcion.push({ texto: lineasTitulo[i], esNegrita: true });
+                }
+                for(let i=0; i<lineasCuerpo.length; i++) {
+                    lineasDescripcion.push({ texto: lineasCuerpo[i], esNegrita: false });
+                }
+            } else {
+                const lineas = dividirTextoEnLineas(c.descripcion || "", colWidths[1]);
+                for(let i=0; i<lineas.length; i++) {
+                    lineasDescripcion.push({ texto: lineas[i], esNegrita: false });
+                }
+            }
+            
+            let lineasRestantes = [...lineasDescripcion];
+            let primeraLineaDelConcepto = true;
+            
+            while(lineasRestantes.length > 0) {
+                let lineasQueCaben = 0;
+                let yTemp = currentY;
+                for(let i=0; i<lineasRestantes.length; i++) {
+                    if(yTemp + alturaPorLinea <= LIMITE_Y_MAXIMO) {
+                        lineasQueCaben++;
+                        yTemp += alturaPorLinea;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if(lineasQueCaben === 0) {
+                    paginaActual = crearPagina();
+                    dibujarTextosFijos(paginaActual, datosCliente);
+                    dibujarEncabezadosTabla(paginaActual, datosCliente);
+                    paginas.push(paginaActual);
+                    currentY = Y_INICIO_TABLA;
+                    primeraLineaDelConcepto = true;
+                    continue;
+                }
+                
+                const lineasADibujar = lineasRestantes.slice(0, lineasQueCaben);
+                let x = 0.85;
+                
+                if(primeraLineaDelConcepto) {
+                    addText(paginaActual, c.clave || "", x, currentY, 10, false, "left");
+                    x += colWidths[0];
+                    
+                    for(let i=0; i<lineasADibujar.length; i++) {
+                        const linea = lineasADibujar[i];
+                        addText(paginaActual, linea.texto, x, currentY + (i * alturaPorLinea), 10, linea.esNegrita, "left");
+                    }
+                    x += colWidths[1];
+                    
+                    addText(paginaActual, `$${precio.toFixed(2)}`, x, currentY, 10, false, "left");
+                    x += colWidths[2];
+                    addText(paginaActual, `${descuento}%`, x, currentY, 10, false, "left");
+                    x += colWidths[3];
+                    addText(paginaActual, cantidad.toString(), x, currentY, 10, false, "left");
+                    x += colWidths[4];
+                    addText(paginaActual, `$${subtotalFila.toFixed(2)}`, x, currentY, 10, false, "left");
+                    x += colWidths[5];
+                    addText(paginaActual, `$${imp.toFixed(2)}`, x, currentY, 10, false, "left");
+                    
+                    primeraLineaDelConcepto = false;
+                } else {
+                    x = 0.85 + colWidths[0];
+                    for(let i=0; i<lineasADibujar.length; i++) {
+                        const linea = lineasADibujar[i];
+                        addText(paginaActual, linea.texto, x, currentY + (i * alturaPorLinea), 10, linea.esNegrita, "left");
+                    }
+                }
+                
+                currentY += lineasQueCaben * alturaPorLinea;
+                lineasRestantes = lineasRestantes.slice(lineasQueCaben);
+                
+                if(lineasRestantes.length > 0) {
+                    paginaActual = crearPagina();
+                    dibujarTextosFijos(paginaActual, datosCliente);
+                    dibujarEncabezadosTabla(paginaActual, datosCliente);
+                    paginas.push(paginaActual);
+                    currentY = Y_INICIO_TABLA;
+                    primeraLineaDelConcepto = false;
+                }
+            }
+            
+            if(currentY + alturaPorLinea <= LIMITE_Y_MAXIMO) {
+                currentY += alturaPorLinea;
+            } else {
+                paginaActual = crearPagina();
+                dibujarTextosFijos(paginaActual, datosCliente);
+                dibujarEncabezadosTabla(paginaActual, datosCliente);
+                paginas.push(paginaActual);
+                currentY = Y_INICIO_TABLA;
+            }
+        }
+        
+        dibujarTotalesPage(paginas[paginas.length - 1]);
+        
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ unit: 'in', format: 'letter' });
+        
+        for(let i=0; i<paginas.length; i++) {
+            document.body.appendChild(paginas[i]);
+            try {
+                const canvas = await html2canvas(paginas[i], { scale: 3, backgroundColor: 'white', useCORS: true });
+                const imgData = canvas.toDataURL('image/png');
+                if(i > 0) pdf.addPage();
+                const imgWidth = 8.5;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            } catch(e) { console.error(e); }
+            document.body.removeChild(paginas[i]);
+        }
+        
+        pdf.save(`cotizacion_${Date.now()}.pdf`);
+        msg.innerHTML = `✅ PDF generado con ${paginas.length} página(s).`;
+        
+        if(!sinGuardar) {
+            await guardarCotizacionActualCloud(true);
+        }
+    }
+    
+    document.getElementById("generarPDF").addEventListener("click", () => generarPDF(false));
+    document.getElementById("guardarPosiciones").addEventListener("click", () => alert("Las posiciones están fijas en el código."));
+    document.getElementById("resetPosiciones").addEventListener("click", () => location.reload());
+    
+    conceptos.push({ clave: "", descripcion: "", precio: 0, descuento: 0, cantidad: 1 });
+    renderConceptos();
+    setupTabs();
+    cargarHistorialDeCloud();
+</script>
+</body>
+</html>
